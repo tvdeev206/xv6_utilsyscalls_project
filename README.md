@@ -8,9 +8,8 @@
 
 | STT | Họ và Tên | MSSV | Vai trò / Phần phụ trách |
 | :-: | :--- | :---: | :--- |
-| 1 | *(Điền tên thành viên 1)* | `MSSV1` | |
-| 2 | *(Điền tên thành viên 2)* | `MSSV2` | |
-| 3 | *(Điền tên thành viên 3)* | `MSSV3` | |
+| 1 | Trần Văn Đức | 24120042 | |
+| 2 | Ngô Thành Khang | 24120066 | |
 
 > **Quy định chung:**
 > - Làm việc theo nhóm tối đa **3 sinh viên**.
