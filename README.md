@@ -21,6 +21,9 @@
 - Report sẽ làm chung trong Prism, khi nào xong thì sẽ check lại và viết lại vào prism.
 - Nếu có hình minh họa thì sẽ để vào trong file image (Prism).
 
+### Chia việc
+- **Phần 1**: gồm memdunp, find + exec và cải tiến shell (Tổng điểm 5.5)
+- **Phần 2**: gồm sandbox a command, attack xv6 và bonus (Tổng điểm 6.5)
 ---
 
 ## Cài đặt & Khởi chạy
