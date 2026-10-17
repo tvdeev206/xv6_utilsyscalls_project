@@ -3,17 +3,23 @@
 Đồ án môn **Hệ điều hành** — Tìm hiểu, xây dựng các tiện ích người dùng (User Utilities), cải tiến Shell và hiện thực các lời gọi hệ thống (System Calls) trên hệ điều hành **xv6-riscv**.
 
 ---
+## Quy định làm bài
 
-## Thông tin nhóm
+### File readme trong từng branch
+- Tự viết hướng giải cụ thể để có thể dễ dàng đối chiếu lại.
+- Nêu các thay đổi ở từng file (nếu có thay đổi).
+- Thêm các hình minh họa (nếu có thì dùng mermaid).
+- Thêm cách chạy lại chương trình.
+- Tổng hợp lại kết quả kiểm thử và hạn chế thành 1 bảng:
+  - Lệnh kiểm thử
+  - Kết quả
+  - Lỗi (nếu gặp)
+- **Lưu ý**: nên viết từng phần theo mục ứng với phần mình làm trong file report trong prism để lúc sau thêm vào dễ hơn.
 
-| STT | Họ và Tên | MSSV | Vai trò / Phần phụ trách |
-| :-: | :--- | :---: | :--- |
-| 1 | Trần Văn Đức | 24120042 | |
-| 2 | Ngô Thành Khang | 24120066 | |
-
-> **Quy định chung:**
-> - Làm việc theo nhóm tối đa **3 sinh viên**.
-> - Môi trường lập trình và kiểm thử: **Linux** (sử dụng bộ công cụ biên dịch chéo RISC-V và trình giả lập **QEMU**).
+### File report chung
+- Gồm đường dẫn đến Prism project.
+- Report sẽ làm chung trong Prism, khi nào xong thì sẽ check lại và viết lại vào prism.
+- Nếu có hình minh họa thì sẽ để vào trong file image (Prism).
 
 ---
 
