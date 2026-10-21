@@ -57,9 +57,46 @@ main(int argc, char *argv[])
   exit(0);
 }
 
+void checkLen(int len, int i){
+  if (len < i){
+    printf("memdump: not enough data\n");
+    exit(1);
+  }
+}
+
 void
 memdump(char *fmt, char *data, int len)
 {
-  // Your code here.  `data` holds `len` valid bytes.
-
+  for (; *fmt != '\0'; fmt++){
+    if (*fmt == 'i'){
+      checkLen(len, 4);
+      printf("%d\n", *(int*)data);
+      data+=4;
+      len-=4;
+    } else if (*fmt == 'p'){
+      checkLen(len, 8);
+      printf("%lx\n", *(uint64*)data);
+      data+=8;
+      len-=8;
+    } else if (*fmt == 'h'){
+      checkLen(len, 2);
+      printf("%d\n", *(short*)data);
+      data+=2;
+      len-=2;
+    } else if (*fmt == 'c'){
+      checkLen(len, 1);
+      printf("%c\n", *data);
+      data+=1;
+      len-=1;
+    } else if (*fmt == 's'){
+      checkLen(len, 8);
+      printf("%s\n", *(char**)data);
+      data+=8;
+      len-=8;
+    } else if (*fmt == 'S'){
+      checkLen(len, 1);
+      printf("%s\n", data);
+      return;
+    }
+  }
 }
