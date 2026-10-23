@@ -132,9 +132,8 @@ def test_find_exec_args():
 @test(10, "exec via sh script")
 def test_test_find_sh():
     r.run_qemu(shell_script([
-        'sh < findtest.sh',
-        'echo DONE',
-    ], 'DONE'))
+        'sh < findtest.sh'
+    ]))
     matches = re.findall("hello", r.qemu.output)
     assert_equal(len(matches), 3, "Number of appearances of 'hello'")
 

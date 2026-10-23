@@ -84,6 +84,7 @@ consolewrite(int user_src, uint64 src, int n)
 // user_dst indicates whether dst is a user
 // or kernel address.
 //
+
 int
 consoleread(int user_dst, uint64 dst, int n)
 {
@@ -143,51 +144,81 @@ consoleread(int user_dst, uint64 dst, int n)
 // do erase/kill processing, append to cons.buf,
 // wake up consoleread() if a whole line has arrived.
 //
-void
-consoleintr(int c)
-{
-  acquire(&cons.lock);
 
-  switch (c) {
-  case C('P'): // Print process list.
-    procdump();
-    break;
-  case C('U'): // Kill line.
-    while (cons.e != cons.w &&
-           cons.buf[(cons.e - 1) % INPUT_BUF_SIZE] != '\n') {
-      cons.e--;
-      consputc(BACKSPACE);
-    }
-    break;
-  case C('H'): // Backspace
-  case '\x7f': // Delete key
-    if (cons.e != cons.w) {
-      cons.e--;
-      consputc(BACKSPACE);
-    }
-    break;
-  default:
-    if (c != 0 && cons.e - cons.r < INPUT_BUF_SIZE) {
-      c = (c == '\r') ? '\n' : c;
+    void
+    consoleintr(int c)
+    {
+      acquire(&cons.lock);
 
-      // echo back to the user.
-      consputc(c);
+      switch (c) {
+      case C('P'): // Print process list.
+        procdump();
+        break;
+      default:
+        if (c != 0 && cons.e - cons.r < INPUT_BUF_SIZE) {
+          c = (c == '\r') ? '\n' : c;
 
-      // store for consumption by consoleread().
-      cons.buf[cons.e++ % INPUT_BUF_SIZE] = c;
-
-      if (c == '\n' || c == C('D') || cons.e - cons.r == INPUT_BUF_SIZE) {
-        // wake up consoleread() if a whole line (or end-of-file)
-        // has arrived.
-        cons.w = cons.e;
-        wakeup(&cons.r);
+          // Store character and wake up consoleread() immediately
+          // so the shell can handle arrow keys, tab, and backspace.
+          cons.buf[cons.e++ % INPUT_BUF_SIZE] = c;
+          cons.w = cons.e;
+          wakeup(&cons.r);
+        }
+        break;
       }
-    }
-    break;
-  }
 
-  release(&cons.lock);
-}
+      release(&cons.lock);
+    }
+
+// void
+// consoleintr(int c)
+// {
+//   acquire(&cons.lock);
+
+//   switch (c) {
+//   case C('P'): // Print process list.
+//     procdump();
+//     break;
+//   case C('U'): // Kill line.
+//     while (cons.e != cons.w &&
+//            cons.buf[(cons.e - 1) % INPUT_BUF_SIZE] != '\n') {
+//       cons.e--;
+//       consputc(BACKSPACE);
+//     }
+//     break;
+//   case C('H'): // Backspace
+//   case '\x7f': // Delete key
+//     if (cons.e != cons.w) {
+//       cons.e--;
+//       consputc(BACKSPACE);
+//     }
+//     break;
+//   case '\t':
+//     cons.tab = 1;
+//     wakeup(&cons.r);
+//     break;
+//   default:
+//     if (c != 0 && cons.e - cons.r < INPUT_BUF_SIZE) {
+//       c = (c == '\r') ? '\n' : c;
+
+//       // echo back to the user.
+//       consputc(c);
+
+//       // store for consumption by consoleread().
+//       cons.buf[cons.e++ % INPUT_BUF_SIZE] = c;
+
+//       if (c == '\n' || c == C('D') || cons.e - cons.r == INPUT_BUF_SIZE) {
+//         // wake up consoleread() if a whole line (or end-of-file)
+//         // has arrived.
+//         cons.w = cons.e;
+//         wakeup(&cons.r);
+//       }
+//     }
+//     break;
+//   }
+
+//   release(&cons.lock);
+// }
 
 void
 consoleinit(void)

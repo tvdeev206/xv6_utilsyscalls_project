@@ -4,6 +4,7 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 #include "kernel/stat.h"
+#include "kernel/fs.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -13,10 +14,30 @@
 #define BACK  5
 
 #define MAXARGS 10
+#define MAX_HISTORY 10
+#define MAX_CMD_LEN 100
+
+static char history[MAX_HISTORY][MAX_CMD_LEN];
+static int history_count = 0;
 
 struct cmd {
   int type;
 };
+
+void
+    add_history(const char *cmd)
+    {
+      if (cmd[0] == 0)
+        return;
+
+      if (history_count < MAX_HISTORY) {
+        strcpy(history[history_count++], cmd);
+      } else {
+        for (int i = 1; i < MAX_HISTORY; i++)
+          strcpy(history[i - 1], history[i]);
+        strcpy(history[MAX_HISTORY - 1], cmd);
+      }
+    }
 
 struct execcmd {
   int type;
@@ -54,6 +75,70 @@ int fork1(void); // Fork but panics on failure.
 void panic(char *);
 struct cmd *parsecmd(char *);
 void runcmd(struct cmd *) __attribute__((noreturn));
+
+void
+    tab_complete(char *buf, int *len, int nbuf)
+    {
+      // 1. Find the start of the word currently being typed
+      int word_start = *len;
+      while (word_start > 0 && buf[word_start - 1] != ' ' && buf[word_start - 1] != '\t')
+        word_start--;
+
+      char *prefix = buf + word_start;
+      int prefix_len = *len - word_start;
+
+      // 2. Check if this is the first word on the command line or a later argument
+      int first_char = 0;
+      while (first_char < *len && (buf[first_char] == ' ' || buf[first_char] == '\t'))
+        first_char++;
+      const char *search_dir = (word_start == first_char) ? "/" : ".";
+
+      // 3. Search directory for entries matching the prefix
+      int fd = open(search_dir, O_RDONLY);
+      if (fd < 0)
+        return;
+
+      char matches[64][DIRSIZ + 1];
+      int match_count = 0;
+      struct dirent de;
+
+      while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+        if (de.inum == 0)
+          continue;
+
+        char name[DIRSIZ + 1];
+        memmove(name, de.name, DIRSIZ);
+        name[DIRSIZ] = 0;
+
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+          continue;
+
+        if (strlen(name) >= prefix_len && memcmp(name, prefix, prefix_len) == 0) {
+          if (match_count < 64)
+            strcpy(matches[match_count++], name);
+        }
+      }
+      close(fd);
+
+      // 4. Handle 1 match vs multiple matches
+      if (match_count == 1) {
+        char *rest = matches[0] + prefix_len;
+        int rest_len = strlen(rest);
+        if (*len + rest_len + 1 < nbuf) {
+          strcpy(buf + *len, rest);
+          *len += rest_len;
+          write(2, rest, rest_len);
+        }
+      } else if (match_count > 1) {
+        write(2, "\n", 1);
+        for (int i = 0; i < match_count; i++) {
+          write(2, matches[i], strlen(matches[i]));
+          write(2, "  ", 2);
+        }
+        write(2, "\n$ ", 3);
+        write(2, buf, *len);
+      }
+    }
 
 // Execute cmd.  Never returns.
 void
@@ -132,20 +217,131 @@ runcmd(struct cmd *cmd)
   exit(0);
 }
 
-int
-getcmd(char *buf, int nbuf)
-{
-  struct stat st;
 
-  if (fstat(0, &st) == 0 && st.type == T_DEVICE){
-    write(2, "$ ", 2);
-  }
-  memset(buf, 0, nbuf);
-  gets(buf, nbuf);
-  if (buf[0] == 0) // EOF
-    return -1;
-  return 0;
-}
+int
+    getcmd(char *buf, int nbuf)
+    {
+      struct stat st;
+      int is_console = (fstat(0, &st) == 0 && st.type == T_DEVICE);
+
+      if (!is_console) {
+        memset(buf, 0, nbuf);
+        gets(buf, nbuf);
+        if (buf[0] == 0)
+          return -1;
+        return 0;
+      }
+
+      write(2, "$ ", 2);
+      memset(buf, 0, nbuf);
+
+      int len = 0;
+      int hist_idx = history_count;
+      char draft[MAX_CMD_LEN];
+      draft[0] = 0;
+
+      char c;
+      while (read(0, &c, 1) == 1) {
+        if (c == '\x04') { // Ctrl-D (EOF)
+          if (len == 0)
+            return -1;
+          continue;
+        }
+
+        if (c == '\n' || c == '\r') {
+          write(2, "\n", 1);
+          buf[len] = 0;
+          return 0;
+        }
+
+        if (c == '\x7f' || c == '\b') { // Backspace / Delete
+          if (len > 0) {
+            len--;
+            buf[len] = 0;
+            write(2, "\b \b", 3);
+          }
+          continue;
+        }
+
+        if (c == ('U' - '@')) { // Ctrl-U: kill line
+          while (len > 0) {
+            len--;
+            write(2, "\b \b", 3);
+          }
+          buf[0] = 0;
+          continue;
+        }
+
+        if (c == '\t'){
+          buf[len] = 0;
+          tab_complete(buf, &len, nbuf);
+          continue;
+        }
+
+        if (c == 0x1b) { // Escape sequence: \x1b [ A / B
+          char seq[2];
+          if (read(0, &seq[0], 1) == 1 && seq[0] == '[') {
+            if (read(0, &seq[1], 1) == 1) {
+              if (seq[1] == 'A') { // Up Arrow -> older command
+                if (hist_idx > 0) {
+                  if (hist_idx == history_count) {
+                    buf[len] = 0;
+                    strcpy(draft, buf);
+                  }
+                  hist_idx--;
+                  while (len > 0) {
+                    write(2, "\b \b", 3);
+                    len--;
+                  }
+                  strcpy(buf, history[hist_idx]);
+                  len = strlen(buf);
+                  write(2, buf, len);
+                }
+              } else if (seq[1] == 'B') { // Down Arrow -> newer command
+                if (hist_idx < history_count) {
+                  hist_idx++;
+                  while (len > 0) {
+                    write(2, "\b \b", 3);
+                    len--;
+                  }
+                  if (hist_idx == history_count)
+                    strcpy(buf, draft);
+                  else
+                    strcpy(buf, history[hist_idx]);
+                  len = strlen(buf);
+                  write(2, buf, len);
+                }
+              }
+            }
+          }
+          continue;
+        }
+
+        // Printable character
+        if (c >= 32 && c < 127 && len + 1 < nbuf) {
+          buf[len++] = c;
+          buf[len] = 0;
+          write(2, &c, 1);
+        }
+      }
+
+      return -1;
+    }
+
+// int
+// getcmd(char *buf, int nbuf)
+// {
+//   struct stat st;
+
+//   if (fstat(0, &st) == 0 && st.type == T_DEVICE) {
+//     write(2, "$ ", 2);
+//   }
+//   memset(buf, 0, nbuf);
+//   gets(buf, nbuf);
+//   if (buf[0] == 0) // EOF
+//     return -1;
+//   return 0;
+// }
 
 int
 main(void)
@@ -160,25 +356,64 @@ main(void)
       break;
     }
   }
+       while (getcmd(buf, sizeof(buf)) >= 0) {
+        // Strip trailing newline/carriage return if present (e.g., from script input)
+        int n = strlen(buf);
+        while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
+          buf[--n] = 0;
 
-  // Read and run input commands.
-  while (getcmd(buf, sizeof(buf)) >= 0) {
-    char *cmd = buf;
-    while (*cmd == ' ' || *cmd == '\t')
-      cmd++;
-    if (*cmd == '\n') // is a blank command
-      continue;
-    if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
-      // Chdir must be called by the parent, not the child.
-      cmd[strlen(cmd) - 1] = 0; // chop \n
-      if (chdir(cmd + 3) < 0)
-        fprintf(2, "cannot cd %s\n", cmd + 3);
-    } else {
-      if (fork1() == 0)
-        runcmd(parsecmd(cmd));
-      wait(0);
-    }
-  }
+        char *cmd = buf;
+        while (*cmd == ' ' || *cmd == '\t')
+          cmd++;
+        if (*cmd == 0) // blank command
+          continue;
+
+        // Handle '!!' (recall most recent command) and '!n' (recall n-th command)
+        if (strcmp(cmd, "!!") == 0) {
+          if (history_count == 0) {
+            fprintf(2, "history: no commands in history\n");
+            continue;
+          }
+          strcpy(buf, history[history_count - 1]);
+          cmd = buf;
+          printf("%s\n", cmd);
+        } else if (cmd[0] == '!' && cmd[1] >= '0' && cmd[1] <= '9') {
+          int idx = atoi(cmd + 1);
+          if (idx < 1 || idx > history_count) {
+            fprintf(2, "history: !%d: event not found\n", idx);
+            continue;
+          }
+          strcpy(buf, history[idx - 1]);
+          cmd = buf;
+          printf("%s\n", cmd);
+        }
+
+        // Save command to history
+        add_history(cmd);
+
+        // Built-in: history
+        if (strcmp(cmd, "history") == 0) {
+          for (int i = 0; i < history_count; i++)
+            printf("%d %s\n", i + 1, history[i]);
+          continue;
+        }
+
+        // Built-in: cd
+        if (cmd[0] == 'c' && cmd[1] == 'd' && (cmd[2] == ' ' || cmd[2] == 0)) {
+          char *dir = cmd + 2;
+          while (*dir == ' ')
+            dir++;
+          if (chdir(dir) < 0)
+            fprintf(2, "cannot cd %s\n", dir);
+          continue;
+        }
+
+        if (fork1() == 0)
+          runcmd(parsecmd(cmd));
+        wait(0);
+      }
+
+
   exit(0);
 }
 
